@@ -1,0 +1,111 @@
+% =========================================================================
+% This is FEM Matlab code for dynamic analysis by direction intergration:
+% (1) Generalized-alpha method, numerical dissipation controlled by user;
+% (2) Two degree of freedom model ;  
+% (3) Reference to J.Chung G.M. Hulbert paper 1993 ;  
+% -------------------------------------------------------------------------
+% By Jia Luo, 2023 May. 5th.
+% =========================================================================
+clear all; clc;
+
+% Setup the alpha parameters;
+% Central difference: beta = 0, gamma = 0.5
+% Trapezoidal: beta = 0.25, gamma = 0.5
+% Damped Newmark: beta = 0.3025, gamma = 0.6
+
+rho_inf = 0.8;
+
+alpha_m = 0.5 * (3 - rho_inf ) / (1 + rho_inf );
+alpha_f = 1 / (rho_inf + 1);
+gamma = 0.5 - alpha_f + alpha_m;
+
+%gamma = 0.5 - alpha_m + alpha_f;
+
+%beta  = 0.25 *(1 - alpha_m + alpha_f)^2;
+
+
+
+% beta = 0;
+% gamma = 0.5;
+
+% beta = 0.25;
+% gamma = 0.5;
+
+% beta = 0.3025;
+% gamma = 0.6;
+
+m1 = 1.0;
+m2 = 1.0;
+
+k1 = 1.0e4;
+k2 = 1.0;
+
+% stiffness and mass matrix
+M = [m1, 0.0; 0.0, m2];
+K = [(k1 + k2), -k2; -k2, k2];
+
+% initial condition
+d0 = [ 1 ; 10];
+v0 = [ 0 ; 0];
+
+% determine the natrual frequencies
+lambda = eig(K, M);
+omega = sqrt(lambda);
+
+T1 = 2 * pi / omega(1);
+T2 = 2 * pi / omega(2);
+
+dt = T1 / 20;
+% dt = T2 / pi ;
+% dt = 0.018;
+T_period = 5 * T1;
+
+N = ceil(T_period / dt);
+
+%initial acceleration
+a0 = M \ (-K * d0);
+
+% allocate solutions
+v = zeros(2, N+1);
+d = v;
+dot_d = v;
+dot_v = v;
+
+v(:,1) = v0;
+d(:,1) = d0;
+
+dot_v(:,1) = a0;
+dot_d(:,1) = v0;
+
+% LEFT, effecive mass matrix; 
+LEFT = alpha_m * M + alpha_f^2 * gamma^2 * dt^2 * ( 1 / alpha_m) * K;
+
+for n = 2 : N + 1
+    % Predictors, (9.1.7),(9.1.8) of linear FEM book;
+    d_tilde = d(:,n-1) + (1 - gamma) * dt * dot_d(:,n-1);
+    v_tilde = v(:,n-1) + (1 - gamma) * dt * dot_v(:,n-1);
+
+    % RIGHT, effecive load at time tn;
+    RIGHT = -(1- alpha_m) * M * dot_v(:,n-1) - (1 - alpha_f ) * K * d(:,n-1) ...
+        -alpha_f * K * d_tilde + alpha_f * gamma * dt * ( 1.0 / alpha_m) * K...
+        * (-(1- alpha_f) * v(:,n-1) - alpha_f * v_tilde + (1 - alpha_m) * dot_d(:,n-1) );
+    % LDL decomposition;
+    dot_v(:,n) = LEFT \ RIGHT;
+    % update
+    v(:,n) = v_tilde +  gamma * dt * dot_v(:,n);
+    dot_d(:,n) = ( 1 / alpha_m) * ((1- alpha_f) * v(:,n-1) + alpha_f * v(:,n) - (1 - alpha_m) * dot_d(:,n-1));
+    % Correctors;
+    d(:,n) = d_tilde + gamma * dt * dot_d(:,n);   
+end
+
+% Postprocessing: Visualization
+
+t = 1 : 1 : N;
+
+subplot(2,2,1), plot(t, d(1,1:N)); grid on;
+subplot(2,2,2), plot(t, v(1,1:N)); grid on;
+
+subplot(2,2,3), plot(t, d(2,1:N)); grid on;
+subplot(2,2,4), plot(t, v(2,1:N)); grid on;
+
+%END
