@@ -13,16 +13,17 @@ clear all; clc;
 % Trapezoidal: beta = 0.25, gamma = 0.5
 % Damped Newmark: beta = 0.3025, gamma = 0.6
 
-rho_inf = 0.8;
+rho_inf = 0.5;
 
-alpha_m = (2 * rho_inf - 1) / (rho_inf + 1);
-alpha_f = rho_inf / (rho_inf + 1);
+alpha_m = 0.5 * (3 - rho_inf ) / (rho_inf + 1);
+alpha_f = 1 / (rho_inf + 1);
+alpha_f = 1 / (rho_inf + 1);
 
-gamma = 0.5 - alpha_m + alpha_f;
-beta  = 0.25 *(1 - alpha_m + alpha_f)^2;
-
+%gamma = 0.5 - alpha_m + alpha_f;
 
 %beta  = 0.25 *(1 - alpha_m + alpha_f)^2;
+
+
 
 % beta = 0;
 % gamma = 0.5;
@@ -54,9 +55,9 @@ omega = sqrt(lambda);
 T1 = 2 * pi / omega(1);
 T2 = 2 * pi / omega(2);
 
-%dt = T1 / 20;
-%dt = T2 / pi ;
-dt = 0.018;
+dt = T1 / 20;
+% dt = T2 / pi ;
+% dt = 0.018;
 T_period = 5 * T1;
 
 N = ceil(T_period / dt);
@@ -65,30 +66,37 @@ N = ceil(T_period / dt);
 a0 = M \ (-K * d0);
 
 % allocate solutions
-a = zeros(2, N+1);
-v = a;
-d = a;
+v = zeros(2, N+1);
+d = v;
+dot_d = v;
+dot_v = v;
 
-a(:,1) = a0;
 v(:,1) = v0;
 d(:,1) = d0;
+
+dot_v(:,1) = a0;
+dot_d(:,1) = v0;
+
 % LEFT, effecive mass matrix; 
-LEFT = M * (1 - alpha_m) + (1 - alpha_f ) * beta * dt * dt * K;
+LEFT = alpha_m * M + alpha_f * alpha_f * gamma * gamma * dt * dt * K;
 
 for n = 2 : N + 1
     % Predictors, (9.1.7),(9.1.8) of linear FEM book;
-    d_tilde = d(:,n-1) + dt * v(:,n-1) + 0.5 * dt * dt * (1 - 2 * beta) * a(:,n-1);
-    v_tilde = v(:,n-1) + (1 - gamma) * dt * a(:,n-1);
+    d_tilde = d(:,n-1) + (1 - gamma) * dt * dot_d(:,n-1);
+    v_tilde = v(:,n-1) + (1 - gamma) * dt * dot_v(:,n-1);
 
     % RIGHT, effecive load at time tn;
-    RIGHT = - M * alpha_m * a(:,n-1) - (1 - alpha_f ) * K * d_tilde - K * alpha_f * d(:,n-1);
+    RIGHT = -(1- alpha_m)* M * dot_v(:,n-1) - (1 - alpha_f ) * K * d(:,n-1) ...
+        -alpha_f * K * d_tilde + K * alpha_f * gamma * dt * ( 1 / alpha_m)...
+        * (-(1- alpha_f) * v(:,n-1) - alpha_f * v_tilde + (1 - alpha_m) * dot_d(:,n-1) );
     % LDL decomposition;
-    a(:,n) = LEFT \ RIGHT;
-
+    dot_v(:,n) = LEFT \ RIGHT;
+    % update
+    v(:,n) = v_tilde +  gamma * dt * dot_v(:,n);
+    dot_d(:,n) =  ( 1 / alpha_m) * ((1- alpha_f) * v(:,n-1) + alpha_f *  v(:,n) - (1 - alpha_m) * dot_d(:,n-1));
     % Correctors;
-
-    d(:,n) = d_tilde + beta * dt * dt * a(:,n);
-    v(:,n) = v_tilde + gamma * dt * a(:,n);
+    d(:,n) = d_tilde + gamma * dt * dot_v(:,n) ;
+   
 end
 
 % Postprocessing: Visualization
